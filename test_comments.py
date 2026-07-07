@@ -122,139 +122,187 @@ def fetch_comments():
         st.error(f"❌ Error al obtener comentarios: {str(e)}")
         st.session_state.is_loading = False
 
-def load_from_cache():
+def load_from_cache(post_url):
     """Cargar datos desde el archivo JSON cache"""
     try:
         with open("comments.json", "r", encoding="utf-8") as f:
             items = json.load(f)
         
         df = pd.DataFrame(items)
-        
-        # Eliminar columnas innecesarias
-        eliminar_cols = ["facebookUrl", "commentId", "id", "feedbackId", "profileId", 
-                        "facebookId", "threadingDepth", "pageAdLibrary", "likesCount", "inputUrl", "attachments"]
-        df = df.drop(columns=eliminar_cols, errors="ignore")
-        
-        # Formatear fecha
-        if 'date' in df.columns:
-            df['date'] = df['date'].apply(format_fecha)
-        
-        # Renombrar columnas
-        df.rename(
-            columns={
-                "commentUrl": "Link",
-                "text": "Comentario",
-                "date": "Fecha",
-                "profileName": "Usuario",
-                "profilePicture": "Foto",
-                "profileUrl": "Url user",
-                "postTitle": "Título publicación",
-            },
-            inplace=True
-        )
-        
-        # Reordenar columnas
-        df = reordenar_columnas(df)
-        
-        st.session_state.comments_data = df
-        st.session_state.last_update = "Cargado datos desde archivo local"
-        return True
+
+        primer_url = df["facebookUrl"].iloc[0]
+
+        if post_url == primer_url:
+            print(post_url)
+            print(primer_url)
+            # Eliminar columnas innecesarias
+            eliminar_cols = ["facebookUrl", "commentId", "id", "feedbackId", "profileId", 
+                            "facebookId", "threadingDepth", "pageAdLibrary", "likesCount", "inputUrl", "attachments"]
+            df = df.drop(columns=eliminar_cols, errors="ignore")
+            
+            # Formatear fecha
+            if 'date' in df.columns:
+                df['date'] = df['date'].apply(format_fecha)
+            
+            # Renombrar columnas
+            df.rename(
+                columns={
+                    "commentUrl": "Link",
+                    "text": "Comentario",
+                    "date": "Fecha",
+                    "profileName": "Usuario",
+                    "profilePicture": "Foto",
+                    "profileUrl": "Url user",
+                    "postTitle": "Título publicación",
+                },
+                inplace=True
+            )
+            
+            # Reordenar columnas
+            df = reordenar_columnas(df)
+            
+            st.session_state.comments_data = df
+            st.session_state.last_update = "Cargado datos desde archivo local"
+
+            col1, col2, col3 = st.columns([2, 2, 2])
+
+            with col1:
+                st.write("")
+
+            with col2:
+                st.write("")
+                # if st.button("🔄 Obtener comentarios", use_container_width=True, disabled=st.session_state.is_loading):
+                    # fetch_comments()  # Descomentado para que funcione
+                    # pass
+
+            with col3:
+                st.write("")
+
+            # Mostrar información de caché
+            if st.session_state.last_update:
+                st.text(f"📅 Última actualización: {st.session_state.last_update}")
+                # pass
+
+            # Intentar cargar desde caché si no hay datos
+            if st.session_state.comments_data is None:
+                if load_from_cache():
+                    pass
+                    # st.info("📁 Datos cargados desde caché local")  # Descomentado para mostrar mensaje
+
+            # Si hay datos, mostrar el buscador y la tabla
+            if st.session_state.comments_data is not None:
+                df = st.session_state.comments_data.copy()
+                
+                # Crear columnas para el search input y botón limpiar
+                cols1, cols2, cols3 = st.columns([2, 4, 2])
+                
+                with cols1:
+                    st.write("")
+                
+                with cols2:
+                    search_term = st.text_input(
+                        "Buscar usuario",
+                        key="search_term_input",  # Cambiado el key para evitar conflictos
+                        placeholder="Escribe el nombre del usuario... (dejar vacío para mostrar todos)",
+                        label_visibility="collapsed"
+                    )
+                    st.session_state.search_term = search_term
+                
+                with cols3:
+                    st.write("")
+
+                # Aplicar filtro según el término de búsqueda
+                if st.session_state.search_term and st.session_state.search_term.strip():
+                    # Filtrar por usuario (búsqueda parcial, insensible a mayúsculas)
+                    df_filtered = df[df['Usuario'].str.contains(st.session_state.search_term, case=False, na=False)]
+                    st.write(f"Mostrando {len(df_filtered)} resultado(s) para **'{st.session_state.search_term}'**")  # Descomentado
+                else:
+                    # Mostrar todos los datos
+                    df_filtered = df
+                    st.text(f"Mostrando {len(df_filtered)} comentarios")  # Descomentado
+                
+                # Configurar columnas de Streamlit
+                column_config = {}
+                
+                for col in df_filtered.columns:
+                    if df_filtered[col].dropna().empty:
+                        continue
+                    
+                    sample = df_filtered[col].dropna().astype(str)
+                    
+                    # Verificar si la columna contiene URLs
+                    if not sample.empty and sample.str.startswith(("http://", "https://")).all():
+                        if col == "Foto":
+                            column_config[col] = st.column_config.ImageColumn(
+                                label=col,
+                                help="Foto de perfil"
+                            )
+                        else:
+                            column_config[col] = st.column_config.LinkColumn(
+                                label=col,
+                                display_text="Abrir"
+                            )
+                
+                # Mostrar dataframe
+                st.dataframe(
+                    df_filtered,
+                    width="stretch",
+                    hide_index=True,
+                    column_config=column_config
+                )
+
+            else:
+                st.warning("⚠️ No hay datos disponibles. Haz clic en 'Obtener comentarios' para cargarlos.")
+                
+                # Botón de carga inicial más visible
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    if st.button("🚀 Cargar comentarios", use_container_width=True, type="primary"):
+                        # fetch_comments()  # Descomentado para que funcione
+                        pass
+
+            return True
+        else:
+            st.write('No se encontraron datos para esta publicacion')
     except:
         return False
 
-# Título y botones
-col1, col2, col3 = st.columns([2, 2, 2])
+#Codigo para posts
+df_posts = pd.read_csv("2026-07-06T16-13_export POSTS.csv")
+del_col = ['postId','facebookUrl', 'pageName', 'timestamp', 'user', 'topReactionsCount','reactionLikeCount','reactionLoveCount','reactionHahaCount', 'collaborators','feedbackId', 'paidPartnership', 'topComments','topLevelUrl', 'facebookId', 'pageAdLibrary', 'inputUrl', 'timeCreated', 'timestampCreated','textReferences','reactionCareCount', 'media','viewsCount', 'videoPostViewCount', 'liveViewerCount','reactionWowCount', 'sharedPost']
+# Eliminar columnas
+df_posts = df_posts.drop(columns=del_col)
 
-with col1:
-    st.write("")
+# Renombrar columnas
+df_posts = df_posts.rename(columns={'time':'Fecha','text':'Publicación','comments': 'Comentarios', 'shares': 'Compartido', 'isVideo':'Video'})
 
-with col2:
-    if st.button("🔄 Obtener comentarios", use_container_width=True, disabled=st.session_state.is_loading):
-        # fetch_comments()  # Descomentado para que funcione
-        pass
+# Convertir time a formato dd/mm/yy hh:mm:ss
+df_posts['Fecha'] = pd.to_datetime(df_posts['Fecha']).dt.strftime('%d/%m/%y %H:%M:%S')
 
-with col3:
-    st.write("")
+# Configurar columna url como LinkColumn
+column_config = {
+    "url": st.column_config.LinkColumn("URL", display_text="Abrir", width=30)
+}
 
-# Mostrar información de caché
-if st.session_state.last_update:
-    st.text(f"📅 Última actualización: {st.session_state.last_update}")
+df_posts["Fecha"] = pd.to_datetime(
+    df_posts["Fecha"],
+    format="%d/%m/%y %H:%M:%S"
+)
 
-# Intentar cargar desde caché si no hay datos
-if st.session_state.comments_data is None:
-    if load_from_cache():
-        pass
-        # st.info("📁 Datos cargados desde caché local")  # Descomentado para mostrar mensaje
+# Selector de fecha
+# fecha = st.date_input("Filtrar por fecha")
+# st.write(fecha)
 
-# Si hay datos, mostrar el buscador y la tabla
-if st.session_state.comments_data is not None:
-    df = st.session_state.comments_data.copy()
-    
-    # Crear columnas para el search input y botón limpiar
-    cols1, cols2, cols3 = st.columns([2, 4, 2])
-    
-    with cols1:
-        st.write("")
-    
-    with cols2:
-        search_term = st.text_input(
-            "Buscar usuario",
-            key="search_term_input",  # Cambiado el key para evitar conflictos
-            # value=st.session_state.search_term,
-            placeholder="Escribe el nombre del usuario... (dejar vacío para mostrar todos)",
-            label_visibility="collapsed"
-        )
-        st.session_state.search_term = search_term
-    
-    with cols3:
-        st.write("")
+# df_filtrado = df_posts[
+#     df_posts["Fecha"].dt.normalize() == pd.Timestamp(fecha)
+# ]
 
-    # Aplicar filtro según el término de búsqueda
-    if st.session_state.search_term and st.session_state.search_term.strip():
-        # Filtrar por usuario (búsqueda parcial, insensible a mayúsculas)
-        df_filtered = df[df['Usuario'].str.contains(st.session_state.search_term, case=False, na=False)]
-        st.write(f"Mostrando {len(df_filtered)} resultado(s) para **'{st.session_state.search_term}'**")  # Descomentado
-    else:
-        # Mostrar todos los datos
-        df_filtered = df
-        st.text(f"Mostrando {len(df_filtered)} comentarios")  # Descomentado
-    
-    # Configurar columnas de Streamlit
-    column_config = {}
-    
-    for col in df_filtered.columns:
-        if df_filtered[col].dropna().empty:
-            continue
-        
-        sample = df_filtered[col].dropna().astype(str)
-        
-        # Verificar si la columna contiene URLs
-        if not sample.empty and sample.str.startswith(("http://", "https://")).all():
-            if col == "Foto":
-                column_config[col] = st.column_config.ImageColumn(
-                    label=col,
-                    help="Foto de perfil"
-                )
-            else:
-                column_config[col] = st.column_config.LinkColumn(
-                    label=col,
-                    display_text="Abrir"
-                )
-    
-    # Mostrar dataframe
-    st.dataframe(
-        df_filtered,
-        width="stretch",
-        hide_index=True,
-        column_config=column_config
-    )
-
-else:
-    st.warning("⚠️ No hay datos disponibles. Haz clic en 'Obtener comentarios' para cargarlos.")
-    
-    # Botón de carga inicial más visible
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("🚀 Cargar comentarios", use_container_width=True, type="primary"):
-            # fetch_comments()  # Descomentado para que funcione
-            pass
+post_to_show = ''
+event = st.dataframe(df_posts, column_config=column_config, width='stretch', selection_mode = 'single-row', on_select="rerun")
+# event = st.dataframe(df_filtrado, column_config=column_config, width='stretch', selection_mode = 'single-row', on_select="rerun")
+ 
+if event.selection.rows:
+    indice = event.selection.rows[0]
+    post_to_show = df_posts.iloc[indice]["url"]
+    load_from_cache(post_to_show)
+    post_to_show = ''
